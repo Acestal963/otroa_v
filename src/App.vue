@@ -1,3 +1,4 @@
+<!-- eslint-disable no-unused-vars -->
 <template>
   <div class="flex flex-col items-center h-screen">
     <div class="flex flex-row items-center justify-center w-2/3 gap-3 p-4">
@@ -6,23 +7,27 @@
       <button @click="addNode" class="p-1.5 text-white bg-purple-500 rounded">Add Node</button>
       <button @click="animate" class="p-1.5 text-white bg-purple-500 rounded">Animate</button>
     </div>
+    <input type="file" ref="fileInput" accept=".json" class="hidden" @change="handleFileChange" />
     <div id="graph-container" class="w-full h-full">
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, render } from 'vue'
+import { ref, onMounted } from 'vue'
 import Swal from 'sweetalert2'
 import * as d3 from 'd3'
 
-const graph = ref([
+const fileInput = ref(null)
+
+//! Uncomment if need sample data
+const graph = ref(/* [
   { id: 1, name: "node 1", edges: [2, 3, 4], color: "#FFFFFF" },
   { id: 2, name: "node 2", edges: [1, 3], color: "#FFFFFF" },
   { id: 3, name: "node 3", edges: [1, 2, 4, 5], color: "#FFFFFF" },
   { id: 4, name: "node 4", edges: [1, 3], color: "#FFFFFF" },
   { id: 5, name: "node 5", edges: [3], color: "#FFFFFF" }
-])
+] */)
 
 const createNode = (name, id) => {
   const newNode = {
@@ -87,7 +92,6 @@ const addNode = async () => {
 
 
 const renderGraph = () => {
-  // Remove any existing SVG elements before rendering the updated graph
   d3.select("#graph-container").selectAll("svg").remove()
 
   const svg = d3.select("#graph-container")
@@ -107,17 +111,19 @@ const renderGraph = () => {
     .force("charge", d3.forceManyBody().strength(-500))
     .force("center", d3.forceCenter(width / 2, height / 2))
 
-  // Create links (edges)
   const link = svg.append("g")
     .attr("class", "links")
     .selectAll("line")
     .data(graph.value.flatMap(node => node.edges.map(e => ({ source: node.id, target: e }))))
     .enter()
     .append("line")
-    .attr("stroke", "#999")
-    .attr("stroke-width", 2)
+    .attr("stroke", d => {
+      const source = graph.value.find(node => node.id === d.source);
+      const target = graph.value.find(node => node.id === d.target);
+      return source.color === "#FF0000" && target.color === "#FF0000" ? "#FF0000" : "#000";
+    })
+    .attr("stroke-width", 5)
 
-  // Create nodes
   const node = svg.append("g")
     .attr("class", "nodes")
     .selectAll("g")
@@ -126,37 +132,35 @@ const renderGraph = () => {
     .append("g")
     .call(d3.drag()
       .on("start", (event, d) => {
-        event.sourceEvent.stopPropagation() // Prevent zoom during drag
+        event.sourceEvent.stopPropagation()
         if (!event.active) simulation.alphaTarget(0.3).restart()
         d.fx = d.x
         d.fy = d.y
       })
       .on("drag", (event, d) => {
-        event.sourceEvent.stopPropagation() // Prevent zoom during drag
+        event.sourceEvent.stopPropagation()
         d.fx = event.x
         d.fy = event.y
       })
       .on("end", (event, d) => {
-        event.sourceEvent.stopPropagation() // Prevent zoom during drag
+        event.sourceEvent.stopPropagation()
         if (!event.active) simulation.alphaTarget(0)
         d.fx = null
         d.fy = null
       }))
 
-  // Append circles for nodes
   node.append("circle")
     .attr("r", 15)
     .attr("fill", d => d.color || "#FFFFFF")
     .attr("stroke", "#000000")
-    .attr("stroke-width", 2)
+    .attr("stroke-width", 5)
 
-  // Append text to each node
   node.append("text")
     .attr("dy", ".35em")
-    .attr("x", d => 0)
-    .attr("y", d => 0)
+    .attr("x", 0)
+    .attr("y", 0)
     .attr("text-anchor", "middle")
-    .attr("font-size", "10px")
+    .attr("font-size", "2em")
     .attr("fill", "#000000")
     .text(d => d.name)
 
@@ -172,15 +176,116 @@ const renderGraph = () => {
   })
 }
 
+const importGraph = () => {
+  fileInput.value.click()
+}
 
-const importGraph = () => {}
+const handleFileChange = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target.result)
+        if (checkJSONFormat(json)) {
+          graph.value = json
+          renderGraph()
+          Swal.fire('Success', 'Graph imported successfully!', 'success')
+        } else {
+          Swal.fire('Error', 'Invalid graph format!', 'error')
+        }
+      } catch (error) {
+        Swal.fire('Error', `Invalid JSON file! ${error}`, 'error')
+      }
+    }
+    reader.readAsText(file)
+  }
+}
 
-const exportGraph = () => {}
+const checkJSONFormat = (json) => {
+  if (!Array.isArray(json)) return false
 
-const animate = () => {}
+  for (const node of json) {
+    if (typeof node.id !== 'number' ||
+      typeof node.name !== 'string' ||
+      !Array.isArray(node.edges) ||
+      typeof node.color !== 'string') {
+      return false
+    }
+  }
+  return true
+}
+
+const exportGraph = () => {
+  const jsonData = JSON.stringify(graph.value, null, 2)
+
+  const blob = new Blob([jsonData], { type: 'application/json' })
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = 'graph.json'
+
+  link.click()
+
+  URL.revokeObjectURL(url)
+}
+
+const animate = () => { bfs(graph.value[0].id) }
+
+const bfs = async (startNodeId) => {
+  const visited = new Set();
+  const queue = [];
+  const animationDelay = 1000;
+
+
+  const startNode = graph.value.find(node => node.id === startNodeId);
+  if (!startNode) {
+    console.log("Start node not found");
+    return;
+  }
+
+  visited.add(startNode.id);
+  queue.push(startNode);
+
+
+  while (queue.length > 0) {
+    const currentNode = queue.shift();
+
+
+    currentNode.color = "#FF0000";
+    console.log(`Visited node: ${currentNode.name}`);
+
+
+    renderGraph();
+    await delay(animationDelay);
+
+
+    for (const neighborId of currentNode.edges) {
+      const neighborNode = graph.value.find(node => node.id === neighborId);
+
+      if (neighborNode && !visited.has(neighborNode.id)) {
+        visited.add(neighborNode.id);
+        queue.push(neighborNode);
+
+
+        d3.selectAll("line")
+          .filter(d => (d.source === currentNode.id && d.target === neighborNode.id) ||
+            (d.source === neighborNode.id && d.target === currentNode.id))
+          .attr("stroke", "#FF0000");
+
+        renderGraph();
+        await delay(animationDelay);
+      }
+    }
+  }
+};
+
+
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 onMounted(() => {
   renderGraph()
 })
 </script>
-
