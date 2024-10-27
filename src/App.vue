@@ -20,14 +20,14 @@ import * as d3 from 'd3'
 
 const fileInput = ref(null)
 
-//! Uncomment if need sample data
-const graph = ref(/* [
+//!Uncomment if need sample data
+const graph = ref( [
   { id: 1, name: "node 1", edges: [2, 3, 4], color: "#FFFFFF" },
   { id: 2, name: "node 2", edges: [1, 3], color: "#FFFFFF" },
   { id: 3, name: "node 3", edges: [1, 2, 4, 5], color: "#FFFFFF" },
   { id: 4, name: "node 4", edges: [1, 3], color: "#FFFFFF" },
   { id: 5, name: "node 5", edges: [3], color: "#FFFFFF" }
-] */)
+] )
 
 const createNode = (name, id) => {
   const newNode = {
@@ -62,7 +62,7 @@ const addNode = async () => {
     input: "text",
     inputLabel: "Ingresa el nombre del nuevo nodo"
   })
-
+    
   const nodeId = graph.value.length + 1
   createNode(nodeName, nodeId)
 
@@ -92,9 +92,15 @@ const addNode = async () => {
 
 
 const renderGraph = () => {
-  d3.select("#graph-container").selectAll("svg").remove()
+  //d3.select("#graph-container").selectAll("svg").remove()
 
-  const svg = d3.select("#graph-container")
+  const container=d3.select("#graph-container");
+  const transform = container.select("svg").empty() 
+    ? d3.zoomIdentity 
+    : d3.zoomTransform(container.select("svg").node()); // Si hay, usar la actual
+
+  container.selectAll("svg").remove()
+  const svg = container
     .append("svg")
     .attr("width", "100%")
     .attr("height", "100%")
@@ -102,13 +108,14 @@ const renderGraph = () => {
       svg.attr("transform", event.transform)
     }))
     .append("g")
+    .attr("transform",transform);
 
-  const width = 800
-  const height = 600
+  const width = document.getElementById('graph-container').clientWidth;
+  const height = document.getElementById('graph-container').clientHeight;
 
   const simulation = d3.forceSimulation(graph.value)
     .force("link", d3.forceLink().id(d => d.id))
-    .force("charge", d3.forceManyBody().strength(-500))
+    .force("charge", d3.forceManyBody().strength(-300))
     .force("center", d3.forceCenter(width / 2, height / 2))
 
   const link = svg.append("g")
@@ -246,10 +253,15 @@ const bfs = async (startNodeId) => {
     return;
   }
 
+  graph.value.forEach(node =>{
+    node.fx=node.x;
+    node.fy=node.y;
+  });
+
   visited.add(startNode.id);
   queue.push(startNode);
 
-
+  
   while (queue.length > 0) {
     const currentNode = queue.shift();
 
@@ -280,6 +292,11 @@ const bfs = async (startNodeId) => {
       }
     }
   }
+
+  graph.value.forEach(node=>{
+    node.fx=null;
+    node.fy=null;
+  })
 };
 
 
